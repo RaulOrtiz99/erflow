@@ -1,128 +1,161 @@
 // src/app/core/services/room.service.ts
+
 import { Injectable } from '@angular/core';
 import { SupabaseService } from './supabase.service';
 import { BehaviorSubject, Observable } from 'rxjs';
-import { Room, RoomParticipant } from '../models/room.model';
+
+// Definimos las interfaces necesarias
+export interface Room {
+  id: string;
+  name: string;
+  description?: string;
+  host_id: string;
+  created_at: Date;
+  updated_at: Date;
+  diagram_data?: any;
+}
+
+export interface RoomCreationData {
+  name: string;
+  description?: string;
+}
 
 @Injectable({
   providedIn: 'root'
 })
 export class RoomService {
-  // Observable para mantener la lista de salas actualizada
-  private roomsSubject = new BehaviorSubject<Room[]>([]);
-  private currentRoomSubject = new BehaviorSubject<Room | null>(null);
+  private currentRoom = new BehaviorSubject<Room | null>(null);
+  private rooms = new BehaviorSubject<Room[]>([]);
 
   constructor(private supabaseService: SupabaseService) {
-    // Nos suscribimos a cambios en tiempo real de las salas
+    // Suscribirse a cambios en tiempo real de las salas
     this.setupRealtimeSubscription();
   }
 
-  // Configurar suscripción en tiempo real
   private setupRealtimeSubscription() {
+    // Configuramos la suscripción a cambios en tiempo real
     this.supabaseService.client
-      .channel('rooms_channel')
-      .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'rooms' },
+      .channel('public:rooms')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'rooms'
+        },
         (payload) => {
           // Actualizamos la lista de salas cuando hay cambios
           this.loadRooms();
-        })
+        }
+      )
       .subscribe();
   }
 
-  // Cargar todas las salas del usuario
+  // Cargar todas las salas disponibles para el usuario
   async loadRooms(): Promise<void> {
     try {
       const { data, error } = await this.supabaseService.client
         .from('rooms')
         .select(`
           *,
-          participants:room_participants(*)
+          host:host_id(id, email, full_name),
+          participants:room_participants(user_id, role)
         `)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      this.roomsSubject.next(data || []);
+
+      this.rooms.next(data || []);
     } catch (error) {
-      console.error('Error loading rooms:', error);
+      console.error('Error cargando salas:', error);
       throw error;
     }
   }
 
   // Crear una nueva sala
-  async createRoom(roomData: Partial<Room>): Promise<Room> {
-    const user = await this.supabaseService.getCurrentUserSync();
-    if (!user) throw new Error('No user authenticated');
-
+  async createRoom(roomData: RoomCreationData): Promise<Room> {
     try {
       const { data, error } = await this.supabaseService.client
         .from('rooms')
-        .insert([{
-          ...roomData,
-          host_id: user.id,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        }])
+        .insert([
+          {
+            name: roomData.name,
+            description: roomData.description,
+            host_id: this.supabaseService.getCurrentUserSync()?.id,
+            diagram_data: { entities: [], relationships: [] }
+          }
+        ])
         .select()
         .single();
 
       if (error) throw error;
 
-      // También añadimos al creador como participante
-      await this.addParticipant(data.id, user.id, 'host');
+      // Añadimos al creador como participante con rol de host
+      await this.addParticipant(data.id, data.host_id, 'host');
 
       return data;
     } catch (error) {
-      console.error('Error creating room:', error);
+      console.error('Error creando sala:', error);
       throw error;
     }
   }
 
-  // Obtener una sala específica
-  async getRoom(roomId: string): Promise<Room> {
+  // Unirse a una sala existente
+  async joinRoom(roomId: string): Promise<void> {
     try {
-      const { data, error } = await this.supabaseService.client
+      const userId = this.supabaseService.getCurrentUserSync()?.id;
+      if (!userId) throw new Error('Usuario no autenticado');
+
+      // Verificamos si el usuario ya es participante
+      const { data: existingParticipant } = await this.supabaseService.client
+        .from('room_participants')
+        .select()
+        .eq('room_id', roomId)
+        .eq('user_id', userId)
+        .single();
+
+      if (!existingParticipant) {
+        // Si no es participante, lo añadimos
+        await this.addParticipant(roomId, userId, 'editor');
+      }
+
+      // Cargamos los datos de la sala
+      const { data: room, error } = await this.supabaseService.client
         .from('rooms')
-        .select(`
-          *,
-          participants:room_participants(*)
-        `)
+        .select('*')
         .eq('id', roomId)
         .single();
 
       if (error) throw error;
-      this.currentRoomSubject.next(data);
-      return data;
+
+      this.currentRoom.next(room);
     } catch (error) {
-      console.error('Error getting room:', error);
+      console.error('Error uniéndose a la sala:', error);
       throw error;
     }
   }
 
   // Añadir un participante a una sala
-  async addParticipant(roomId: string, userId: string, role: 'host' | 'editor' | 'viewer'): Promise<void> {
+  private async addParticipant(roomId: string, userId: string, role: 'host' | 'editor' | 'viewer'): Promise<void> {
     try {
       const { error } = await this.supabaseService.client
         .from('room_participants')
-        .insert([{
-          room_id: roomId,
-          user_id: userId,
-          role: role
-        }]);
+        .insert([{ room_id: roomId, user_id: userId, role }]);
 
       if (error) throw error;
     } catch (error) {
-      console.error('Error adding participant:', error);
+      console.error('Error añadiendo participante:', error);
       throw error;
     }
   }
 
-  // Observables para componentes
-  getRooms(): Observable<Room[]> {
-    return this.roomsSubject.asObservable();
+  // Obtener la sala actual
+  getCurrentRoom(): Observable<Room | null> {
+    return this.currentRoom.asObservable();
   }
 
-  getCurrentRoom(): Observable<Room | null> {
-    return this.currentRoomSubject.asObservable();
+  // Obtener todas las salas
+  getRooms(): Observable<Room[]> {
+    return this.rooms.asObservable();
   }
 }

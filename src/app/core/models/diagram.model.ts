@@ -34,8 +34,8 @@ export interface DiagramData {
   entities: Entity[];
   relationships: Relationship[];
   version: number;
-  last_modified: Date;
-  last_modified_by: string;
+  lastModified: Date;  // Cambié last_modified a lastModified
+  lastModifiedBy: string;  // Cambié last_modified_by a lastModifiedBy
 }
 
 // Interfaces para GoJS
