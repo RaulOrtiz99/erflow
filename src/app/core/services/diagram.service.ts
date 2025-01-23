@@ -55,7 +55,11 @@ export class DiagramService {
       this.setupContextMenu();
 
     } catch (error) {
-      this.errorHandler.addError(`Error al inicializar el diagrama: ${error.message}`);
+      if (error instanceof Error) {
+        this.errorHandler.addError(`Error al inicializar el diagrama: ${error.message}`);
+      } else {
+        this.errorHandler.addError('Error al inicializar el diagrama');
+      }
     }
   }
   private handleDiagramChanges(): void {
@@ -521,7 +525,11 @@ export class DiagramService {
         model.commitTransaction('update entity');
       }
     } catch (error) {
-      this.errorHandler.addError('Error al actualizar la entidad: ' + error.message);
+      if (error instanceof Error) {
+        this.errorHandler.addError('Error al actualizar la entidad: ' + error.message);
+      } else {
+        this.errorHandler.addError('Error al actualizar la entidad');
+      }
     }
   }
 
@@ -540,7 +548,11 @@ export class DiagramService {
 
       if (error) throw error;
     } catch (error) {
-      this.errorHandler.addError('Error al guardar el diagrama: ' +  error.message);
+      if (error instanceof Error) {
+        this.errorHandler.addError('Error al guardar el diagrama: ' + error.message);
+      } else {
+        this.errorHandler.addError('Error al guardar el diagrama');
+      }
       throw error;
     }
   }
@@ -555,18 +567,55 @@ export class DiagramService {
   }
 
   // Método para exportar el diagrama actual
-  exportDiagram(format: 'svg' | 'png' | 'json'): string | Blob {
+  exportDiagram(format: 'svg' | 'png' | 'json'): Promise<string | Blob> | string {
     if (!this.diagram) throw new Error('El diagrama no está inicializado');
 
     switch (format) {
-      case 'svg':
-        return this.diagram.makeSvg({ scale: 1 }).outerHTML;
-      case 'png':
-        return this.diagram.makeImageData({ background: "white", returnType: "blob" });
+      case 'svg': {
+        const svg = this.diagram.makeSvg({ scale: 1 });
+        if (!svg) throw new Error('No se pudo generar el SVG');
+        return svg.outerHTML;
+      }
+      case 'png': {
+        return new Promise((resolve, reject) => {
+          this.diagram?.makeImageData({
+            background: "white",
+            returnType: "blob",
+            callback: (blob: Blob) => resolve(blob)
+          });
+        });
+      }
       case 'json':
         return JSON.stringify(this.currentDiagramSubject.value, null, 2);
       default:
         throw new Error('Formato no soportado');
+    }
+  }
+
+  updateEntityPosition(entityData: { id: string, position: { x: number, y: number } }): void {
+    if (!this.diagram) return;
+
+    const model = this.diagram.model as go.GraphLinksModel;
+    const nodeData = model.findNodeDataForKey(entityData.id);
+    
+    if (nodeData) {
+      model.setDataProperty(nodeData, "loc", `${entityData.position.x} ${entityData.position.y}`);
+    }
+  }
+
+  updateRelationship(relationshipData: Relationship): void {
+    if (!this.diagram) return;
+
+    const model = this.diagram.model as go.GraphLinksModel;
+    const linkData = model.findLinkDataForKey(relationshipData.id);
+    
+    if (linkData) {
+      model.startTransaction('update relationship');
+      model.setDataProperty(linkData, "from", relationshipData.fromEntity);
+      model.setDataProperty(linkData, "to", relationshipData.toEntity);
+      model.setDataProperty(linkData, "type", relationshipData.type);
+      model.setDataProperty(linkData, "text", relationshipData.name);
+      model.commitTransaction('update relationship');
     }
   }
 

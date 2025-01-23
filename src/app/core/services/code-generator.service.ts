@@ -151,20 +151,20 @@ import lombok.Setter;`;
   }
 
   // Utilidades de formateo
-  private formatClassName(name: string): string {
-    return this.toPascalCase(name);
+  private formatClassName(name: string | undefined): string {
+    return this.toPascalCase(name || 'Entity');
   }
 
-  private formatTableName(name: string): string {
-    return this.toSnakeCase(name).toLowerCase();
+  private formatTableName(name: string | undefined): string {
+    return this.toSnakeCase(name || 'entity').toLowerCase();
   }
 
-  private formatColumnName(name: string): string {
-    return this.toSnakeCase(name).toLowerCase();
+  private formatColumnName(name: string | undefined): string {
+    return this.toSnakeCase(name || 'column').toLowerCase();
   }
 
-  private formatAttributeName(name: string): string {
-    return this.toCamelCase(name);
+  private formatAttributeName(name: string | undefined): string {
+    return this.toCamelCase(name || 'attribute');
   }
 
   private mapAttributeType(type: string): string {

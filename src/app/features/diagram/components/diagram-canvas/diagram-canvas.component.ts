@@ -2,6 +2,7 @@
 
 import {DiagramService} from '../../../../core/services/diagram.service';
 import {CodeGeneratorService} from '../../../../core/services/code-generator.service';
+import { firstValueFrom } from 'rxjs';
 
 export class DiagramCanvasComponent {
   constructor(
@@ -11,7 +12,7 @@ export class DiagramCanvasComponent {
 
   // Método para exportar el diagrama a código JPA
   async exportToJpa() {
-    const currentDiagram = this.diagramService.getCurrentDiagramSync();
+    const currentDiagram = await firstValueFrom(this.diagramService.getCurrentDiagram());
     if (!currentDiagram) return;
 
     const jpaCode = this.codeGeneratorService.generateJpaEntities(

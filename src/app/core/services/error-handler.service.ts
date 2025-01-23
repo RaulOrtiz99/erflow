@@ -10,17 +10,20 @@ export interface ErrorMessage {
 }
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class ErrorHandlerService {
   private errorsSubject = new BehaviorSubject<ErrorMessage[]>([]);
 
-  addError(message: string, type: 'error' | 'warning' | 'info' = 'error'): void {
+  addError(
+    message: string,
+    type: 'error' | 'warning' | 'info' = 'error'
+  ): void {
     const currentErrors = this.errorsSubject.value;
     const newError: ErrorMessage = {
       message,
       type,
-      timestamp: new Date()
+      timestamp: new Date(),
     };
 
     this.errorsSubject.next([...currentErrors, newError]);
@@ -34,7 +37,7 @@ export class ErrorHandlerService {
   removeError(error: ErrorMessage): void {
     const currentErrors = this.errorsSubject.value;
     this.errorsSubject.next(
-      currentErrors.filter(e => e.timestamp !== error.timestamp)
+      currentErrors.filter((e) => e.timestamp !== error.timestamp)
     );
   }
 
